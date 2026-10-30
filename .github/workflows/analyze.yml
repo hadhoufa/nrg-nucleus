@@ -1,0 +1,48 @@
+name: NRG Analyze Logs
+on: 
+  push:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Diagnostic Kernel
+        run: |
+          echo "🔍 Starting NRG NUCLEUS Analysis..."
+          python3 - << 'PYEOF'
+import os, re, json, glob
+from datetime import datetime
+
+RULES = [
+    (r"FATAL EXCEPTION|ANR in|Force finishing", "❌ CRASH", 25),
+    (r"OutOfMemoryError",                       "❌ CRASH", 25),
+    (r"EGL_BAD_ALLOC",                          "⚠️ GRAPHICS", 5),
+    (r"Permission Denial|SecurityException",    "⚠️ PERMISSION", 5),
+]
+
+files = glob.glob("*.log") + glob.glob("*.txt")
+if not files:
+    print("⚠️ No .log or .txt files found. Add one to analyze.")
+else:
+    for path in files:
+        if "requirements" in path: continue
+        print(f"\n--- Analyzing: {path} ---")
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        
+        score = 100.0
+        verdict = "✅ HEALTHY"
+        for pattern, label, weight in RULES:
+            if re.search(pattern, content, re.IGNORECASE):
+                score -= weight
+                verdict = label
+        
+        score = max(0, score)
+        print(f"Score: {score:.1f}/100")
+        print(f"Verdict: {verdict}")
+        print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+PYEOF
